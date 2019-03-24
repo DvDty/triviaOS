@@ -1,0 +1,23 @@
+{
+  "name": "triviaOS",
+  "version": "1.0.0",
+  "description": "Twitch.tv bot that lets you answer questions and collect point for leader boards.",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DvDty/triviaOS.git"
+  },
+  "keywords": [],
+  "author": "DvDty",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/DvDty/triviaOS/issues"
+  },
+  "homepage": "https://github.com/DvDty/triviaOS#readme",
+  "dependencies": {
+    "twitch-bot": "^1.2.5"
+  }
+}
