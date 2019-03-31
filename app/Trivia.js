@@ -1,202 +1,122 @@
-const TwitchBot = require('twitch-bot');
+const User = require('../app/User');
+const Command = require('../app/Command');
+const Config = require('../app/Config');
+const Bot = require('twitch-bot');
 
-class Trivia {
-    live = false;
-    askLoop = null;
-    answer = '';
+module.exports = class Trivia {
 
-    constructor(config, questions) {
-        this.config = config;
+    constructor() {
+        this.live = false;
+        this.askLoop = null;
+        this.answer = '';
 
-        this.bot = new TwitchBot({
-            username: this.getConfig('twitchUsername'),
-            oauth: this.getConfig('twitchOauth'),
-            channels: this.getConfig('channels'),
-        });
+        this.config = new Config();
+        this.bot = new Bot(this.config.get('botCredentials'));
+        this.command = new Command(this);
 
-        this.questions = questions;
-        this.secondsPerQuestion = this.getConfig('secondsPerQuestion');
-        this.commands = this.getConfig('commands');
+        this.questions = require('../questions');
+
         this.streak = {username: '', points: 0};
     }
 
-    getConfig(key) {
-        if (!this.config.hasOwnProperty(key) || !this.config.key) {
-            throw `${key} key is missing from your config file or its value is invalid.`;
-        }
-
-        return this.config.key;
-    };
+    listen() {
+        this.bot.on('join', () => {
+            this.bot.on('message', user => {
+                this.handleMessage(user.message, user);
+            });
+        });
+    }
 
     handleMessage(message, user) {
-        if (typeof message !== 'string') {
+        if (!this.live || typeof message !== 'string') {
             return false;
         }
 
-        if (this.isUnfommattedCommand(message)) {
-            return this.handleCommand(message, user);
+        user = new User(user);
+
+        if (message.slice(0, 1) === '!') {
+            return this.command.handle(message, user);
         }
 
-        if (this.live) {
-            return this.attemptAnswer(message, user);
-        }
-
-        return false;
+        return this.attemptAnswer(message, user);
     }
 
     say(message) {
         this.bot.say(`/me ${message}`);
-        return true;
     }
 
-    start = () => {
+    start() {
         this.live = true;
 
-        this.ask().then();
+        this.say('HeyGuys Let\'s get started!');
+        this.ask();
 
         this.askLoop = setInterval(() => {
-            this.ask().then().catch(e => {
-                console.log(e);
-            });
-        }, (this.secondsPerQuestion - 10) * 1000);
+            this.ask();
+        }, (this.config.get('secondsPerQuestion') - 10) * 1000);
     };
 
-    stop = () => {
+    stop() {
         this.live = false;
-        this.answer = null;
+        this.answer = '';
 
         clearInterval(this.askLoop);
 
         this.say('riPepperonis RIP riPepperonis');
     };
 
-    ask = async(question = this.getRandomQuestion()) => {
+
+    // todo: move ask, attemptAnswer and getQuestion to Question class
+    ask(question = this.getRandomQuestion()) {
         if (this.answer) {
             this.say('Nobody answered correctly. The answer was ' + this.answer);
             this.answer = null;
-            await this.sleep(5);
+            this.streak.points = 0;
+
+            setTimeout(_ => {
+                this.ask(question);
+            }, 3000);
+
+            return false;
         }
 
         this.say('Next question in 10 seconds...');
-        await this.sleep(10);
 
-        this.say(question.question);
-        this.answer = question.answer;
+        setTimeout(_ => {
+            this.say(question.question);
+            this.answer = question.answer;
+        }, 10000);
     };
 
-    attemptAnswer = (message, user) => {
-        if (!this.answer || message.toLowerCase() !== this.answer.toLowerCase()) {
+    attemptAnswer(message, user) {
+        if (this.answer === '' || message.toLowerCase() !== this.answer.toLowerCase()) {
             return false;
         }
 
         let answer = this.answer;
-        this.answer = null;
+        this.answer = '';
 
         let points = 0; // todo: retrieve from db
         let add = 1;
 
-        if (!this.isPleb(user)) {
-            add += this.getConfig('subBonus');
+        if (!user.isPleb) {
+            add += this.config.get('subBonus');
         }
 
         if (this.streak.username === user.username) {
             this.streak.points++;
+            // check for max streak
         } else {
             this.streak.username = user.username;
             this.streak.points = 1;
         }
 
-        this.say(`
-            ${user.displayName} got it PogChamp !
-            The answer was ${this.answer}. +${add} points = ${points + add} total.
-            Streak ${this.streak.points}.
-        `);
+        this.say(`Congratulations ${user.displayName}! The answer was ${answer}. Points [${points} + ${add}]. Streak ${this.streak.points}.`);
 
         // todo: update user's points in db
     };
 
-    getRandomQuestion = (questions = this.questions) => {
+    getRandomQuestion(questions = this.questions) {
         return questions[Math.floor(Math.random() * questions.length)];
     };
-
-    handleCommand = (command, user) => {
-        if (!this.isUnfommattedCommand(command)) {
-            return false;
-        }
-
-        command = this.formatCommand(command);
-
-        if (!this.isValidCommand(command)) {
-            return false;
-        }
-
-        if (!this.userHaveAccess(command, user)) {
-            return false;
-        }
-
-        this.executeCommand(command);
-    };
-
-    isUnfommattedCommand = message => message.charAt(0) === '!';
-
-    formatCommand = command => {
-        command = command.split(' ');
-
-        return {
-            name: command.shift().substr(1),
-            action: command.shift(),
-        };
-    };
-
-    isValidCommand = command => {
-        if (typeof command === 'object'
-            && typeof command.name === 'string'
-            && typeof command.action === 'string'
-        ) {
-            return this.doesCommandExists(command);
-        }
-
-        return false;
-    };
-
-    userHaveAccess = (command, user) => {
-        return true; // todo
-    };
-
-    doesCommandExists = command => {
-        return this.commands.hasOwnProperty(command.name)
-            && this.commands[command.name].includes(command.action);
-    };
-
-    executeCommand = command => {
-        this.commands[command.name](command.action);
-    };
-
-    trivia = action => {
-        if (action === 'on') {
-            if (this.live) {
-                return this.say('is already running');
-            }
-
-            this.start();
-        }
-
-        if (action === 'off') {
-            if (!this.live) {
-                return this.say('is already off');
-            }
-
-            this.stop();
-        }
-    };
-
-    sleep = seconds => new Promise(res => setTimeout(res, seconds));
-
-    isPleb(user) {
-        return this.isMod(user); //todo: add sub and broadcaster check
-    }
-
-    isMod(user) {
-        return user.mod;
-    };
-}
+};
