@@ -28,7 +28,7 @@ module.exports = class Trivia {
     }
 
     handleMessage(message, user) {
-        if (!this.live || typeof message !== 'string') {
+        if (typeof message !== 'string') {
             return false;
         }
 
@@ -38,7 +38,11 @@ module.exports = class Trivia {
             return this.command.handle(message, user);
         }
 
-        return this.attemptAnswer(message, user);
+        if (this.live) {
+            return this.attemptAnswer(message, user);
+        }
+
+        return false;
     }
 
     say(message) {
