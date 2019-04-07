@@ -74,7 +74,7 @@ module.exports = class Trivia {
     ask(question = this.getRandomQuestion()) {
         if (this.answer) {
             this.say('Nobody answered correctly. The answer was ' + this.answer);
-            this.answer = null;
+            this.answer = '';
             this.streak.points = 0;
 
             setTimeout(_ => {
